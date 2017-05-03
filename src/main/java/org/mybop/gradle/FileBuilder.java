@@ -5,10 +5,10 @@ import org.gradle.api.file.SourceDirectorySet;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -36,13 +37,14 @@ public final class FileBuilder {
 
     private static final String IMPORT = "import ";
     private static final String END_COMMENT = "*/";
+    private static final Charset CHARSET = StandardCharsets.UTF_8;
 
-    private static final Charset CHARSET = Charset.forName("UTF-8");
     private final Set<String> imports = new HashSet<>();
 
-    private final Set<String> knownFiles = new HashSet<>();
+    private final Set<Path> knownFiles = new HashSet<>();
 
-    private final Map<String, ClassCode> innerClasses = new LinkedHashMap<>();
+    private final Map<Path, ClassCode> innerClasses = new LinkedHashMap<>();
+
     private final SourceDirectorySet sourceRoot;
 
     FileBuilder(SourceDirectorySet sourceRoot) {
@@ -53,14 +55,13 @@ public final class FileBuilder {
         if (line.startsWith("package ")) {
             // Do nothing, we'll remove the package info
         } else if (line.startsWith(IMPORT)) {
-            final String importedClassPath = importToPath(line);
-            if (!knownFiles.contains(importedClassPath)) {
-                if (Files.exists(Paths.get(toAbsolutePath(importedClassPath)))) {
-                    innerClasses.put(importedClassPath, processFile(importedClassPath));
-                } else {
-                    System.out.println("Standard import:" + line);
-                    imports.add(line);
-                }
+            final Optional<Path> importedClassPath = importToPath(line);
+
+            if (!importedClassPath.isPresent()) {
+                System.out.println("Standard import:" + line);
+                imports.add(line);
+            } else {
+                innerClasses.put(importedClassPath.get(), processFile(importedClassPath.get()));
             }
         } else {
             if (fileKeyWordRead) {
@@ -86,13 +87,13 @@ public final class FileBuilder {
         return fileKeyWordRead;
     }
 
-    private String importToPath(String importStr) {
-        final String className = importStr.substring(IMPORT.length()).replaceAll(";", "");
-
+    private Optional<Path> importToPath(final String importStr) {
+        final String className = importStr.substring(IMPORT.length())
+                .replaceAll(";", "");
         return classNameToPath(className);
     }
 
-    private String classNameToPath(String className) {
+    private Optional<Path> classNameToPath(final String className) {
         return sourceRoot.getSrcDirs().stream()
                 .map(File::toPath)
                 .map(dir -> Arrays.stream(className.split("\\.")).reduce(dir, Path::resolve, (p1, p2) -> {
@@ -101,19 +102,22 @@ public final class FileBuilder {
                 .map(path -> path.getParent().resolve(path.getFileName() + ".java"))
                 .peek(path -> System.out.println("File path: " + path))
                 .filter(Files::isRegularFile)
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("class " + className + " not found"))
-                .toAbsolutePath()
-                .toString();
+                .map(Path::toAbsolutePath)
+                .findFirst();
     }
 
-    ClassCode processClass(String className) {
-        return processFile(classNameToPath(className));
+    public ClassCode processClass(final String className) {
+        final Optional<Path> classPath = classNameToPath(className);
+        if (classPath.isPresent()) {
+            return processFile(classPath.get());
+        } else {
+            throw new IllegalArgumentException("class `" + className + "` not found");
+        }
     }
 
-    ClassCode processFile(String fileName) {
+    private ClassCode processFile(final Path fileName) {
         System.out.println("reading class content of " + fileName);
-        knownFiles.add(toAbsolutePath(fileName));
+        knownFiles.add(fileName.toAbsolutePath());
         final List<String> fileContent = readFile(fileName);
         final ClassCode code = readFileContent(fileName, fileContent);
         readPackageClasses(fileName);
@@ -121,16 +125,16 @@ public final class FileBuilder {
         return code;
     }
 
-    private List<String> readFile(String fileName) {
+    private List<String> readFile(final Path fileName) {
         try {
-            return Files.readAllLines(Paths.get(fileName), CHARSET);
+            return Files.readAllLines(fileName, CHARSET);
         } catch (final IOException e) {
             System.err.println("Error while reading file " + fileName);
             throw new IllegalStateException("Unable to continue");
         }
     }
 
-    private ClassCode readFileContent(String fileName, List<String> fileContent) {
+    private ClassCode readFileContent(final Path fileName, final List<String> fileContent) {
         final ClassCode code = new ClassCode(fileName);
         boolean fileKeyWordRead = false;
         boolean insideComment = false;
@@ -164,13 +168,10 @@ public final class FileBuilder {
         return code;
     }
 
-    private void readPackageClasses(String fileName) {
-        final Path directory = Paths.get(fileName).getParent();
-        DirectoryStream<Path> ds;
-        try {
-            ds = Files.newDirectoryStream(directory);
+    private void readPackageClasses(final Path fileName) {
+        try (final DirectoryStream<Path> ds = Files.newDirectoryStream(fileName.getParent())) {
             for (final Path child : ds) {
-                final String absolutePath = toAbsolutePath(child);
+                final Path absolutePath = child.toAbsolutePath();
                 if (!Files.isDirectory(child) && absolutePath.endsWith(".java") && !knownFiles.contains(absolutePath)) {
                     innerClasses.put(absolutePath, processFile(absolutePath));
                 }
@@ -180,19 +181,11 @@ public final class FileBuilder {
         }
     }
 
-    private String toAbsolutePath(Path path) {
-        return path.toFile().getAbsolutePath();
-    }
+    public void write(final Path outputDir, final ClassCode treated) {
+        final String className = Optional.ofNullable(treated.className())
+                .filter(name -> !name.isEmpty())
+                .orElse("Out");
 
-    private String toAbsolutePath(String fileName) {
-        return toAbsolutePath(Paths.get(fileName));
-    }
-
-    void write(Path outputDir, ClassCode treated) {
-        String className = treated.className();
-        if (className == null || className.isEmpty()) {
-            className = "Out";
-        }
         final Path outputFile = outputDir.resolve(className + ".java");
 
         final List<String> lines = new ArrayList<>();

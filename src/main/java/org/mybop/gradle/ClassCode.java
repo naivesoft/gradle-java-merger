@@ -1,10 +1,11 @@
 package org.mybop.gradle;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
 public final class ClassCode {
-    private final String classFile;
+    private final Path classFile;
 
     private String className;
     private String keyword;
@@ -12,7 +13,7 @@ public final class ClassCode {
     private final List<String> beforeClassContent = new ArrayList<>();
     private final List<String> afterClassContent = new ArrayList<>();
 
-    ClassCode(String classFile) {
+    ClassCode(Path classFile) {
         this.classFile = classFile;
     }
 
