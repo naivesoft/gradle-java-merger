@@ -172,7 +172,7 @@ public final class FileBuilder {
         try (final DirectoryStream<Path> ds = Files.newDirectoryStream(fileName.getParent())) {
             for (final Path child : ds) {
                 final Path absolutePath = child.toAbsolutePath();
-                if (!Files.isDirectory(child) && absolutePath.endsWith(".java") && !knownFiles.contains(absolutePath)) {
+                if (!Files.isDirectory(child) && child.getFileName().toString().endsWith(".java") && !knownFiles.contains(absolutePath)) {
                     innerClasses.put(absolutePath, processFile(absolutePath));
                 }
             }

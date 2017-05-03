@@ -25,7 +25,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'org.mybop.gradle:java-merger:0.1'
+        classpath 'org.mybop.gradle:java-merger:0.3'
     }
 }
 ```
@@ -55,7 +55,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'org.mybop.gradle:java-merger:0.1'
+        classpath 'org.mybop.gradle:java-merger:0.3'
     }
 }
 
