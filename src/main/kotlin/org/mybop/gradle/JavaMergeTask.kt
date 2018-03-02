@@ -9,7 +9,7 @@ open class JavaMergeTask : DefaultTask() {
 
     @TaskAction
     fun merge() {
-        val extension = project.extensions.findByType(MergePluginExtension::class.java)
+        val extension = project.extensions.findByType(MergePluginExtension::class.java)!!
 
         val javaConvention = project.convention.getPlugin(JavaPluginConvention::class.java)
 
