@@ -61,7 +61,9 @@ public final class FileBuilder {
                 System.out.println("Standard import:" + line);
                 imports.add(line);
             } else {
-                innerClasses.put(importedClassPath.get(), processFile(importedClassPath.get()));
+                if (!knownFiles.contains(importedClassPath.get())) {
+                    innerClasses.put(importedClassPath.get(), processFile(importedClassPath.get()));
+                }
             }
         } else {
             if (fileKeyWordRead) {
